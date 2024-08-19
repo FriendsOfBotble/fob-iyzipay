@@ -10,6 +10,7 @@ use Botble\Support\Services\ProduceServiceInterface;
 use Exception;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 abstract class IyzipayPaymentAbstract implements ProduceServiceInterface
 {
@@ -53,9 +54,10 @@ abstract class IyzipayPaymentAbstract implements ProduceServiceInterface
             $transactionRequest = new RetrievePaymentRequest();
             $transactionRequest->setLocale(app()->getLocale());
             $transactionRequest->setPaymentId($payment->charge_id);
-            $response = Payment::retrieve($transactionRequest, (new Iyzipay())->getCredentials());
+            $response = Payment::retrieveRawContent($transactionRequest, (new Iyzipay())->getCredentials());
+            $response = json_decode($response, true);
 
-            if ($response->getStatus() == 'success') {
+            if (Arr::get($response, 'status') == 'success') {
                 return $response;
             }
         } catch (Exception $exception) {

@@ -2,10 +2,6 @@
 
 namespace FriendsOfBotble\Iyzipay\Http\Controllers;
 
-use FriendsOfBotble\Iyzipay\Iyzipay\Model\CheckoutForm;
-use FriendsOfBotble\Iyzipay\Iyzipay\Model\Locale;
-use FriendsOfBotble\Iyzipay\Iyzipay\Request\RetrieveCheckoutFormRequest;
-use FriendsOfBotble\Iyzipay\Services\Iyzipay;
 use Botble\Base\Http\Controllers\BaseController;
 use Botble\Base\Http\Responses\BaseHttpResponse;
 use Botble\Ecommerce\Repositories\Interfaces\OrderHistoryInterface;
@@ -14,6 +10,10 @@ use Botble\Ecommerce\Repositories\Interfaces\OrderProductInterface;
 use Botble\Ecommerce\Repositories\Interfaces\ProductInterface;
 use Botble\Payment\Enums\PaymentStatusEnum;
 use Botble\Payment\Supports\PaymentHelper;
+use FriendsOfBotble\Iyzipay\Iyzipay\Model\CheckoutForm;
+use FriendsOfBotble\Iyzipay\Iyzipay\Model\Locale;
+use FriendsOfBotble\Iyzipay\Iyzipay\Request\RetrieveCheckoutFormRequest;
+use FriendsOfBotble\Iyzipay\Services\Iyzipay;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -43,11 +43,17 @@ class IyzipayController extends BaseController
             'customer_id' => $request->input('customer_id'),
             'customer_type' => $request->input('customer_type'),
             'payment_type' => 'direct',
-            'order_id' => (array)$request->input('order_ids'),
+            'order_id' => (array) $request->input('order_ids'),
         ], $request);
 
+        $nextUrl = PaymentHelper::getRedirectURL($request->input('checkout_token'));
+
+        if (is_plugin_active('job-board')) {
+            $nextUrl = $nextUrl . '?charge_id=' . $checkoutForm->getPaymentId();
+        }
+
         return $response
-            ->setNextUrl(PaymentHelper::getRedirectURL($request->input('checkout_token')))
+            ->setNextUrl($nextUrl)
             ->setMessage(__('Checkout successfully!'));
     }
 

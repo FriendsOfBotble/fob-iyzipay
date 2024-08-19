@@ -2,6 +2,11 @@
 
 namespace FriendsOfBotble\Iyzipay\Providers;
 
+use Botble\Ecommerce\Models\Currency as CurrencyEcommerce;
+use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
+use Botble\JobBoard\Models\Currency as CurrencyJobBoard;
+use Botble\Payment\Enums\PaymentMethodEnum;
+use Exception;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\Address;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\BasketItem;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\BasketItemType;
@@ -13,10 +18,6 @@ use FriendsOfBotble\Iyzipay\Iyzipay\Request\CreateCheckoutFormInitializeRequest;
 use FriendsOfBotble\Iyzipay\Iyzipay\Request\CreatePayWithIyzicoInitializeRequest;
 use FriendsOfBotble\Iyzipay\Services\Gateways\IyzipayPaymentService;
 use FriendsOfBotble\Iyzipay\Services\Iyzipay;
-use Botble\Ecommerce\Models\Currency;
-use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
-use Botble\Payment\Enums\PaymentMethodEnum;
-use Exception;
 use Html;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -73,8 +74,9 @@ class HookServiceProvider extends ServiceProvider
 
         add_filter(PAYMENT_FILTER_PAYMENT_INFO_DETAIL, function ($data, $payment) {
             if ($payment->payment_channel == IYZIPAY_PAYMENT_METHOD_NAME) {
-                $paymentService = (new IyzipayPaymentService());
+                $paymentService = (new IyzipayPaymentService);
                 $paymentDetail = $paymentService->getPaymentDetails($payment);
+
                 if ($paymentDetail) {
                     $data = view(
                         'plugins/iyzipay::detail',
@@ -88,7 +90,7 @@ class HookServiceProvider extends ServiceProvider
 
         add_filter(PAYMENT_FILTER_GET_REFUND_DETAIL, function ($data, $payment, $refundId) {
             if ($payment->payment_channel == IYZIPAY_PAYMENT_METHOD_NAME) {
-                $refundDetail = (new IyzipayPaymentService())->getRefundDetails($refundId);
+                $refundDetail = (new IyzipayPaymentService)->getRefundDetails($refundId);
                 if (! Arr::get($refundDetail, 'error')) {
                     $refunds = Arr::get($payment->metadata, 'refunds');
                     $refund = collect($refunds)->firstWhere('data.id', $refundId);
@@ -130,7 +132,8 @@ class HookServiceProvider extends ServiceProvider
         $paymentData = apply_filters(PAYMENT_FILTER_PAYMENT_DATA, [], $request);
 
         if (strtoupper($currentCurrency->title) !== 'TRY') {
-            $supportedCurrency = Currency::query()->where('title', 'TRY')->first();
+            $currency = is_plugin_active('ecommerce') ? CurrencyEcommerce::class : CurrencyJobBoard::class;
+            $supportedCurrency = $currency::query()->where('title', 'TRY')->first();
 
             if ($supportedCurrency) {
                 $paymentData['currency'] = strtoupper($supportedCurrency->title);
@@ -146,7 +149,7 @@ class HookServiceProvider extends ServiceProvider
             }
         }
 
-        $supportedCurrencies = (new IyzipayPaymentService())->supportedCurrencyCodes();
+        $supportedCurrencies = (new IyzipayPaymentService)->supportedCurrencyCodes();
 
         if (! in_array($paymentData['currency'], $supportedCurrencies)) {
             $data['error'] = true;
@@ -168,9 +171,9 @@ class HookServiceProvider extends ServiceProvider
 
         try {
             if ($paymentType == 'PayWithIyzico') {
-                $paymentRequest = new CreatePayWithIyzicoInitializeRequest();
+                $paymentRequest = new CreatePayWithIyzicoInitializeRequest;
             } else {
-                $paymentRequest = new CreateCheckoutFormInitializeRequest();
+                $paymentRequest = new CreateCheckoutFormInitializeRequest;
             }
 
             $paymentRequest->setLocale($this->app->getLocale());
@@ -186,71 +189,90 @@ class HookServiceProvider extends ServiceProvider
                 ])
             );
 
-            $buyer = new Buyer();
+            $paymentData['address']['country'] = $paymentData['address']['country'] ?? 'no country';
+            $paymentData['address']['state'] = $paymentData['address']['state'] ?? 'no state';
+            $paymentData['address']['city'] = $paymentData['address']['city'] ?? 'no city';
+            $paymentData['address']['address'] = $paymentData['address']['address'] ?? 'no address';
+            $paymentData['address']['zip'] = $paymentData['address']['zip'] ?? 'no zip';
+
+            $buyer = new Buyer;
             $buyer->setId($paymentData['customer_id'] ?: time() . Str::random(10));
 
             $buyer->setName(Str::of($paymentData['address']['name'])->before(' ')->toString());
             $buyer->setSurname(Str::of($paymentData['address']['name'])->after(' ')->toString());
             $buyer->setIdentityNumber(Str::random(5));
             $buyer->setEmail($paymentData['address']['email']);
-            $buyer->setRegistrationAddress($paymentData['address']['address']);
+            $buyer->setRegistrationAddress(is_plugin_active('ecommerce') ? $paymentData['address']['address'] : 'no address');
             $buyer->setCity($paymentData['address']['city']);
             $buyer->setCountry($paymentData['address']['country']);
-            $buyer->setZipCode($paymentData['address']['zip_code']);
+            $buyer->setZipCode(is_plugin_active('ecommerce') ? 'zip_code' : 'zip');
 
-            $shippingAddress = new Address();
+            $shippingAddress = new Address;
             $shippingAddress->setContactName($paymentData['address']['name']);
             $shippingAddress->setCity($paymentData['address']['city']);
             $shippingAddress->setCountry($paymentData['address']['country']);
             $shippingAddress->setAddress($paymentData['address']['address']);
-            $shippingAddress->setZipCode($paymentData['address']['zip_code']);
+            $shippingAddress->setZipCode($paymentData['address'][is_plugin_active('ecommerce') ? 'zip_code' : 'zip']);
             $paymentRequest->setShippingAddress($shippingAddress);
             $paymentRequest->setBillingAddress($shippingAddress);
 
             $buyer->setIp($request->ip());
             $paymentRequest->setBuyer($buyer);
 
-            $orders = $this->app->make(OrderInterface::class)->advancedGet([
-                'condition' => [
-                    ['id', 'IN', $orderIds],
-                    'is_finished' => false,
-                ],
-            ]);
+            if (is_plugin_active('ecommerce')) {
+                $orders = $this->app->make(OrderInterface::class)->advancedGet([
+                    'condition' => [
+                        ['id', 'IN', $orderIds],
+                        'is_finished' => false,
+                    ],
+                ]);
+                $subTotal = 0;
 
-            $subTotal = 0;
-            $basketItems = [];
+                foreach ($orders as $order) {
+                    foreach ($order->products as $product) {
+                        $basketItem = new BasketItem;
+                        $basketItem->setId($product->product_id);
+                        $basketItem->setName($product->product_name);
 
-            foreach ($orders as $order) {
-                foreach ($order->products as $product) {
-                    $basketItem = new BasketItem();
-                    $basketItem->setId($product->product_id);
-                    $basketItem->setName($product->product_name);
+                        if (count($product->product->categories) > 1) {
+                            $basketItem->setCategory1($product->product->categories[0]->name);
+                        } else {
+                            $basketItem->setCategory1('-');
+                        }
 
-                    if (count($product->product->categories) > 1) {
-                        $basketItem->setCategory1($product->product->categories[0]->name);
-                    } else {
-                        $basketItem->setCategory1('-');
+                        if (count($product->product->categories) > 2) {
+                            $basketItem->setCategory2($product->product->categories[1]->name);
+                        }
+
+                        $basketItem->setItemType(BasketItemType::PHYSICAL);
+                        $basketItem->setPrice($product->price * $product->qty * get_current_exchange_rate());
+
+                        $subTotal += $basketItem->getPrice();
+
+                        $basketItems[] = $basketItem;
                     }
-
-                    if (count($product->product->categories) > 2) {
-                        $basketItem->setCategory2($product->product->categories[1]->name);
-                    }
-
-                    $basketItem->setItemType(BasketItemType::PHYSICAL);
-                    $basketItem->setPrice($product->price * $product->qty * get_current_exchange_rate());
-
-                    $subTotal += $basketItem->getPrice();
-
-                    $basketItems[] = $basketItem;
                 }
+
+                $paymentRequest->setPrice($subTotal);
+                $paymentRequest->setPaidPrice($paymentData['amount']);
+
+                $paymentRequest->setBasketItems($basketItems);
+            } else {
+                $product = $paymentData['products'][0];
+                $paymentRequest->setPrice($product['price']);
+                $paymentRequest->setPaidPrice($product['price']);
+
+                $basketItem = new BasketItem;
+                $basketItem->setName($product['name']);
+                $basketItem->setPrice($product['price']);
+                $basketItem->setId($product['id']);
+                $basketItem->setItemType(BasketItemType::VIRTUAL);
+                $basketItem->setCategory1('-');
+
+                $paymentRequest->setBasketItems([$basketItem]);
             }
 
-            $paymentRequest->setPrice($subTotal);
-            $paymentRequest->setPaidPrice($paymentData['amount']);
-
-            $paymentRequest->setBasketItems($basketItems);
-
-            $credentials = (new Iyzipay())->getCredentials();
+            $credentials = (new Iyzipay)->getCredentials();
 
             if ($paymentType == 'PayWithIyzico') {
                 $payWithIyzicoInitialize = PayWithIyzicoInitialize::create($paymentRequest, $credentials);

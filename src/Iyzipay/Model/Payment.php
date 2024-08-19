@@ -22,4 +22,9 @@ class Payment extends PaymentResource
 
         return PaymentMapper::create($rawResult)->jsonDecode()->mapPayment(new Payment());
     }
+
+    public static function retrieveRawContent(RetrievePaymentRequest $request, Options $options)
+    {
+        return parent::httpClient()->post($options->getBaseUrl() . '/payment/detail', parent::getHttpHeaders($request, $options), $request->toJsonString());
+    }
 }
