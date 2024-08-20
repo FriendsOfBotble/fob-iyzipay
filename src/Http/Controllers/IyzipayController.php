@@ -8,6 +8,7 @@ use Botble\Ecommerce\Repositories\Interfaces\OrderHistoryInterface;
 use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
 use Botble\Ecommerce\Repositories\Interfaces\OrderProductInterface;
 use Botble\Ecommerce\Repositories\Interfaces\ProductInterface;
+use Botble\Hotel\Models\Booking;
 use Botble\Payment\Enums\PaymentStatusEnum;
 use Botble\Payment\Supports\PaymentHelper;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\CheckoutForm;
@@ -15,6 +16,7 @@ use FriendsOfBotble\Iyzipay\Iyzipay\Model\Locale;
 use FriendsOfBotble\Iyzipay\Iyzipay\Request\RetrieveCheckoutFormRequest;
 use FriendsOfBotble\Iyzipay\Services\Iyzipay;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 
 class IyzipayController extends BaseController
@@ -43,8 +45,24 @@ class IyzipayController extends BaseController
             'customer_id' => $request->input('customer_id'),
             'customer_type' => $request->input('customer_type'),
             'payment_type' => 'direct',
-            'order_id' => (array) $request->input('order_ids'),
+            'order_id' => (array) $orderId = $request->input('order_ids'),
         ], $request);
+
+        if (is_plugin_active('hotel')) {
+            $booking = Booking::query()
+                ->select('transaction_id')
+                ->find(Arr::first($orderId));
+
+            if (! $booking) {
+                return $response
+                    ->setNextUrl(PaymentHelper::getCancelURL())
+                    ->setMessage(__('Checkout failed!'));
+            }
+
+            return $response
+                ->setNextUrl(PaymentHelper::getRedirectURL($booking->transaction_id))
+                ->setMessage(__('Checkout successfully!'));
+        }
 
         $nextUrl = PaymentHelper::getRedirectURL($request->input('checkout_token'));
 

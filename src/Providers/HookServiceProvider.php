@@ -5,6 +5,7 @@ namespace FriendsOfBotble\Iyzipay\Providers;
 use Botble\Ecommerce\Models\Currency as CurrencyEcommerce;
 use Botble\RealEstate\Models\Currency as CurrencyRealEstate;
 use Botble\JobBoard\Models\Currency as CurrencyJobBoard;
+use Botble\Hotel\Models\Currency as CurrencyHotel;
 use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
 use Botble\Payment\Enums\PaymentMethodEnum;
 use Exception;
@@ -137,6 +138,7 @@ class HookServiceProvider extends ServiceProvider
                 is_plugin_active('ecommerce') => CurrencyEcommerce::class,
                 is_plugin_active('job-board') => CurrencyJobBoard::class,
                 is_plugin_active('real-estate') => CurrencyRealEstate::class,
+                is_plugin_active('hotel') => CurrencyHotel::class,
                 default => null,
             };
 
@@ -196,11 +198,11 @@ class HookServiceProvider extends ServiceProvider
                 ])
             );
 
-            $paymentData['address']['country'] = $paymentData['address']['country'] ?? 'no country';
-            $paymentData['address']['state'] = $paymentData['address']['state'] ?? 'no state';
-            $paymentData['address']['city'] = $paymentData['address']['city'] ?? 'no city';
-            $paymentData['address']['address'] = $paymentData['address']['address'] ?? 'no address';
-            $paymentData['address']['zip'] = $paymentData['address']['zip'] ?? 'no zip';
+            $paymentData['address']['country'] = $paymentData['address']['country'] ?? 'none';
+            $paymentData['address']['state'] = $paymentData['address']['state'] ?? 'none';
+            $paymentData['address']['city'] = $paymentData['address']['city'] ?? 'none';
+            $paymentData['address']['address'] = $paymentData['address']['address'] ?? 'none';
+            $paymentData['address']['zip'] = $paymentData['address']['zip'] ?? 'none';
 
             $buyer = new Buyer;
             $buyer->setId($paymentData['customer_id'] ?: time() . Str::random(10));
@@ -210,15 +212,15 @@ class HookServiceProvider extends ServiceProvider
             $buyer->setIdentityNumber(Str::random(5));
             $buyer->setEmail($paymentData['address']['email']);
             $buyer->setRegistrationAddress(is_plugin_active('ecommerce') ? $paymentData['address']['address'] : 'no address');
-            $buyer->setCity($paymentData['address']['city']);
-            $buyer->setCountry($paymentData['address']['country']);
+            $buyer->setCity($paymentData['address']['city'] ?: 'none');
+            $buyer->setCountry($paymentData['address']['country'] ?: 'none');
             $buyer->setZipCode(is_plugin_active('ecommerce') ? 'zip_code' : 'zip');
 
             $shippingAddress = new Address;
             $shippingAddress->setContactName($paymentData['address']['name']);
-            $shippingAddress->setCity($paymentData['address']['city']);
-            $shippingAddress->setCountry($paymentData['address']['country']);
-            $shippingAddress->setAddress($paymentData['address']['address']);
+            $shippingAddress->setCity($paymentData['address']['city'] ?: 'none');
+            $shippingAddress->setCountry($paymentData['address']['country'] ?: 'none');
+            $shippingAddress->setAddress($paymentData['address']['address'] ?: 'none');
             $shippingAddress->setZipCode($paymentData['address'][is_plugin_active('ecommerce') ? 'zip_code' : 'zip']);
             $paymentRequest->setShippingAddress($shippingAddress);
             $paymentRequest->setBillingAddress($shippingAddress);
