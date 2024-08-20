@@ -3,8 +3,9 @@
 namespace FriendsOfBotble\Iyzipay\Providers;
 
 use Botble\Ecommerce\Models\Currency as CurrencyEcommerce;
-use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
+use Botble\RealEstate\Models\Currency as CurrencyRealEstate;
 use Botble\JobBoard\Models\Currency as CurrencyJobBoard;
+use Botble\Ecommerce\Repositories\Interfaces\OrderInterface;
 use Botble\Payment\Enums\PaymentMethodEnum;
 use Exception;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\Address;
@@ -132,7 +133,13 @@ class HookServiceProvider extends ServiceProvider
         $paymentData = apply_filters(PAYMENT_FILTER_PAYMENT_DATA, [], $request);
 
         if (strtoupper($currentCurrency->title) !== 'TRY') {
-            $currency = is_plugin_active('ecommerce') ? CurrencyEcommerce::class : CurrencyJobBoard::class;
+            $currency = match (true) {
+                is_plugin_active('ecommerce') => CurrencyEcommerce::class,
+                is_plugin_active('job-board') => CurrencyJobBoard::class,
+                is_plugin_active('real-estate') => CurrencyRealEstate::class,
+                default => null,
+            };
+
             $supportedCurrency = $currency::query()->where('title', 'TRY')->first();
 
             if ($supportedCurrency) {
