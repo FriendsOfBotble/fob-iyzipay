@@ -1,5 +1,5 @@
 {
-    "id": "friendsofbotble/iyzipay",
+    "id": "friendsofbotble/fob-iyzipay",
     "name": "Iyzipay (by Iyzico) Payment Gateway",
     "namespace": "FriendsOfBotble\\Iyzipay\\",
     "provider": "FriendsOfBotble\\Iyzipay\\Providers\\IyzipayServiceProvider",
