@@ -29,11 +29,20 @@ class IyzipayController extends BaseController
 
         $checkoutForm = CheckoutForm::retrieve($paymentRequest, $iyzipay->getCredentials());
 
-        if ($checkoutForm->getStatus() !== 'success') {
+        if ($checkoutForm->getStatus() !== 'success' || $checkoutForm->getPaymentStatus() !== 'SUCCESS') {
             return $response
                 ->setError()
                 ->setNextUrl(PaymentHelper::getCancelURL())
-                ->setMessage($checkoutForm->getErrorMessage());
+                ->setMessage($checkoutForm->getErrorMessage() ?: __('Checkout failed!'));
+        }
+
+        $orderId = array_values(array_filter((array) $request->input('order_ids')));
+
+        if (! $orderId || $checkoutForm->getBasketId() !== implode('-', $orderId)) {
+            return $response
+                ->setError()
+                ->setNextUrl(PaymentHelper::getCancelURL())
+                ->setMessage(__('Checkout failed!'));
         }
 
         do_action(PAYMENT_ACTION_PAYMENT_PROCESSED, [
@@ -45,7 +54,7 @@ class IyzipayController extends BaseController
             'customer_id' => $request->input('customer_id'),
             'customer_type' => $request->input('customer_type'),
             'payment_type' => 'direct',
-            'order_id' => (array) $orderId = $request->input('order_ids'),
+            'order_id' => $orderId,
         ], $request);
 
         if (is_plugin_active('hotel')) {
@@ -78,10 +87,13 @@ class IyzipayController extends BaseController
     public function getRefund(Request $request, BaseHttpResponse $response)
     {
         $order = app(OrderInterface::class)->findById($request->input('order_id'));
+        $payment = $order?->payment;
 
-        if ($order) {
-            $payment = $order->payment;
-
+        if (
+            $payment
+            && $payment->payment_channel == IYZIPAY_PAYMENT_METHOD_NAME
+            && $payment->status != PaymentStatusEnum::REFUNDED
+        ) {
             $payment->refunded_amount = $payment->amount;
             $payment->status = PaymentStatusEnum::REFUNDED;
             $payment->refund_note = $request->input('refund_note');

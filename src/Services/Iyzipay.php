@@ -5,6 +5,7 @@ namespace FriendsOfBotble\Iyzipay\Services;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\RefundToBalance;
 use FriendsOfBotble\Iyzipay\Iyzipay\Options;
 use FriendsOfBotble\Iyzipay\Iyzipay\Request\CreateRefundToBalanceRequest;
+use Illuminate\Support\Facades\URL;
 
 class Iyzipay
 {
@@ -22,7 +23,8 @@ class Iyzipay
     {
         $request = new CreateRefundToBalanceRequest();
         $request->setPaymentId($paymentId);
-        $request->setCallbackUrl(route('iyzipay.payment.refund', $optionRefunds));
+        // The refund callback is public, so it is signed to stop anyone from marking orders refunded.
+        $request->setCallbackUrl(URL::temporarySignedRoute('iyzipay.payment.refund', now()->addDay(), $optionRefunds));
         $request->setLocale(app()->getLocale());
 
         return RefundToBalance::create($request, (new Iyzipay())->getCredentials());

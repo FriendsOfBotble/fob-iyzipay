@@ -11,5 +11,5 @@ Route::group(['namespace' => 'FriendsOfBotble\Iyzipay\Http\Controllers', 'middle
     Route::post('iyzipay/payment/refund', [
         'as'   => 'iyzipay.payment.refund',
         'uses' => 'IyzipayController@getRefund',
-    ]);
+    ])->middleware('signed');
 });
