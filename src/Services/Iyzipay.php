@@ -24,7 +24,9 @@ class Iyzipay
         $request = new CreateRefundToBalanceRequest();
         $request->setPaymentId($paymentId);
         // The refund callback is public, so it is signed to stop anyone from marking orders refunded.
-        $request->setCallbackUrl(URL::temporarySignedRoute('iyzipay.payment.refund', now()->addDay(), $optionRefunds));
+        // The customer confirms the refund at iyzico whenever they like, so the link doesn't expire, and
+        // the signature is relative so a proxy terminating HTTPS doesn't invalidate it.
+        $request->setCallbackUrl(url(URL::signedRoute('iyzipay.payment.refund', $optionRefunds, absolute: false)));
         $request->setLocale(app()->getLocale());
 
         return RefundToBalance::create($request, (new Iyzipay())->getCredentials());
