@@ -10,6 +10,7 @@ use Botble\Ecommerce\Repositories\Interfaces\OrderProductInterface;
 use Botble\Ecommerce\Repositories\Interfaces\ProductInterface;
 use Botble\Hotel\Models\Booking;
 use Botble\Payment\Enums\PaymentStatusEnum;
+use Botble\Payment\Models\Payment;
 use Botble\Payment\Supports\PaymentHelper;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\CheckoutForm;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\Locale;
@@ -29,24 +30,41 @@ class IyzipayController extends BaseController
 
         $checkoutForm = CheckoutForm::retrieve($paymentRequest, $iyzipay->getCredentials());
 
-        if ($checkoutForm->getStatus() !== 'success') {
+        if ($checkoutForm->getStatus() !== 'success' || $checkoutForm->getPaymentStatus() !== 'SUCCESS') {
             return $response
                 ->setError()
                 ->setNextUrl(PaymentHelper::getCancelURL())
-                ->setMessage($checkoutForm->getErrorMessage());
+                ->setMessage($checkoutForm->getErrorMessage() ?: __('Checkout failed!'));
         }
 
-        do_action(PAYMENT_ACTION_PAYMENT_PROCESSED, [
-            'amount' => $checkoutForm->getPaidPrice(),
-            'currency' => $checkoutForm->getCurrency(),
-            'charge_id' => $checkoutForm->getPaymentId(),
-            'payment_channel' => IYZIPAY_PAYMENT_METHOD_NAME,
-            'status' => PaymentStatusEnum::COMPLETED,
-            'customer_id' => $request->input('customer_id'),
-            'customer_type' => $request->input('customer_type'),
-            'payment_type' => 'direct',
-            'order_id' => (array) $orderId = $request->input('order_ids'),
-        ], $request);
+        $orderId = array_values(array_filter((array) $request->input('order_ids')));
+
+        if (! $orderId || $checkoutForm->getBasketId() !== implode('-', $orderId)) {
+            return $response
+                ->setError()
+                ->setNextUrl(PaymentHelper::getCancelURL())
+                ->setMessage(__('Checkout failed!'));
+        }
+
+        // A reloaded or replayed callback carries the same token, so only process the payment once.
+        $alreadyProcessed = Payment::query()
+            ->where('charge_id', $checkoutForm->getPaymentId())
+            ->where('status', PaymentStatusEnum::COMPLETED)
+            ->exists();
+
+        if (! $alreadyProcessed) {
+            do_action(PAYMENT_ACTION_PAYMENT_PROCESSED, [
+                'amount' => $checkoutForm->getPaidPrice(),
+                'currency' => $checkoutForm->getCurrency(),
+                'charge_id' => $checkoutForm->getPaymentId(),
+                'payment_channel' => IYZIPAY_PAYMENT_METHOD_NAME,
+                'status' => PaymentStatusEnum::COMPLETED,
+                'customer_id' => $request->input('customer_id'),
+                'customer_type' => $request->input('customer_type'),
+                'payment_type' => 'direct',
+                'order_id' => $orderId,
+            ], $request);
+        }
 
         if (is_plugin_active('hotel')) {
             $booking = Booking::query()
@@ -77,14 +95,19 @@ class IyzipayController extends BaseController
 
     public function getRefund(Request $request, BaseHttpResponse $response)
     {
-        $order = app(OrderInterface::class)->findById($request->input('order_id'));
+        abort_unless($request->hasValidRelativeSignatureWhileIgnoring(['token']), 403);
 
-        if ($order) {
-            $payment = $order->payment;
+        $order = app(OrderInterface::class)->findById($request->query('order_id'));
+        $payment = $order?->payment;
 
+        if (
+            $payment
+            && $payment->payment_channel == IYZIPAY_PAYMENT_METHOD_NAME
+            && $payment->status != PaymentStatusEnum::REFUNDED
+        ) {
             $payment->refunded_amount = $payment->amount;
             $payment->status = PaymentStatusEnum::REFUNDED;
-            $payment->refund_note = $request->input('refund_note');
+            $payment->refund_note = $request->query('refund_note');
             $payment->save();
 
             foreach ($order->products as $orderProduct) {
@@ -121,7 +144,7 @@ class IyzipayController extends BaseController
         }
 
         return $response
-            ->setNextUrl(route('order.edit', $request->input('order_id')))
+            ->setNextUrl(route('order.edit', $request->query('order_id')))
             ->setMessage(__('Refund successfully!'));
     }
 }

@@ -5,6 +5,7 @@ namespace FriendsOfBotble\Iyzipay\Services;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\RefundToBalance;
 use FriendsOfBotble\Iyzipay\Iyzipay\Options;
 use FriendsOfBotble\Iyzipay\Iyzipay\Request\CreateRefundToBalanceRequest;
+use Illuminate\Support\Facades\URL;
 
 class Iyzipay
 {
@@ -22,7 +23,10 @@ class Iyzipay
     {
         $request = new CreateRefundToBalanceRequest();
         $request->setPaymentId($paymentId);
-        $request->setCallbackUrl(route('iyzipay.payment.refund', $optionRefunds));
+        // The refund callback is public, so it is signed to stop anyone from marking orders refunded.
+        // The customer confirms the refund at iyzico whenever they like, so the link doesn't expire, and
+        // the signature is relative so a proxy terminating HTTPS doesn't invalidate it.
+        $request->setCallbackUrl(url(URL::signedRoute('iyzipay.payment.refund', $optionRefunds, absolute: false)));
         $request->setLocale(app()->getLocale());
 
         return RefundToBalance::create($request, (new Iyzipay())->getCredentials());
