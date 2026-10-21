@@ -86,7 +86,7 @@ class IyzipayController extends BaseController
 
     public function getRefund(Request $request, BaseHttpResponse $response)
     {
-        $order = app(OrderInterface::class)->findById($request->input('order_id'));
+        $order = app(OrderInterface::class)->findById($request->query('order_id'));
         $payment = $order?->payment;
 
         if (
@@ -96,7 +96,7 @@ class IyzipayController extends BaseController
         ) {
             $payment->refunded_amount = $payment->amount;
             $payment->status = PaymentStatusEnum::REFUNDED;
-            $payment->refund_note = $request->input('refund_note');
+            $payment->refund_note = $request->query('refund_note');
             $payment->save();
 
             foreach ($order->products as $orderProduct) {
@@ -133,7 +133,7 @@ class IyzipayController extends BaseController
         }
 
         return $response
-            ->setNextUrl(route('order.edit', $request->input('order_id')))
+            ->setNextUrl(route('order.edit', $request->query('order_id')))
             ->setMessage(__('Refund successfully!'));
     }
 }
