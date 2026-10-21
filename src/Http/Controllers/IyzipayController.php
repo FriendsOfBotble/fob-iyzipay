@@ -95,6 +95,8 @@ class IyzipayController extends BaseController
 
     public function getRefund(Request $request, BaseHttpResponse $response)
     {
+        abort_unless($request->hasValidRelativeSignatureWhileIgnoring(['token']), 403);
+
         $order = app(OrderInterface::class)->findById($request->query('order_id'));
         $payment = $order?->payment;
 

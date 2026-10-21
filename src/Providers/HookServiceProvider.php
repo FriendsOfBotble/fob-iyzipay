@@ -199,7 +199,7 @@ class HookServiceProvider extends ServiceProvider
             );
 
             // Bind the orders to the iyzico payment, the callback rejects a token paid for other orders.
-            $paymentRequest->setBasketId(implode('-', (array) $orderIds));
+            $paymentRequest->setBasketId(implode('-', array_values(array_filter((array) $orderIds))));
 
             $paymentData['address']['country'] = $paymentData['address']['country'] ?? 'none';
             $paymentData['address']['state'] = $paymentData['address']['state'] ?? 'none';
