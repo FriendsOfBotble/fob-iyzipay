@@ -10,6 +10,7 @@ use Botble\Ecommerce\Repositories\Interfaces\OrderProductInterface;
 use Botble\Ecommerce\Repositories\Interfaces\ProductInterface;
 use Botble\Hotel\Models\Booking;
 use Botble\Payment\Enums\PaymentStatusEnum;
+use Botble\Payment\Models\Payment;
 use Botble\Payment\Supports\PaymentHelper;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\CheckoutForm;
 use FriendsOfBotble\Iyzipay\Iyzipay\Model\Locale;
@@ -45,17 +46,25 @@ class IyzipayController extends BaseController
                 ->setMessage(__('Checkout failed!'));
         }
 
-        do_action(PAYMENT_ACTION_PAYMENT_PROCESSED, [
-            'amount' => $checkoutForm->getPaidPrice(),
-            'currency' => $checkoutForm->getCurrency(),
-            'charge_id' => $checkoutForm->getPaymentId(),
-            'payment_channel' => IYZIPAY_PAYMENT_METHOD_NAME,
-            'status' => PaymentStatusEnum::COMPLETED,
-            'customer_id' => $request->input('customer_id'),
-            'customer_type' => $request->input('customer_type'),
-            'payment_type' => 'direct',
-            'order_id' => $orderId,
-        ], $request);
+        // A reloaded or replayed callback carries the same token, so only process the payment once.
+        $alreadyProcessed = Payment::query()
+            ->where('charge_id', $checkoutForm->getPaymentId())
+            ->where('status', PaymentStatusEnum::COMPLETED)
+            ->exists();
+
+        if (! $alreadyProcessed) {
+            do_action(PAYMENT_ACTION_PAYMENT_PROCESSED, [
+                'amount' => $checkoutForm->getPaidPrice(),
+                'currency' => $checkoutForm->getCurrency(),
+                'charge_id' => $checkoutForm->getPaymentId(),
+                'payment_channel' => IYZIPAY_PAYMENT_METHOD_NAME,
+                'status' => PaymentStatusEnum::COMPLETED,
+                'customer_id' => $request->input('customer_id'),
+                'customer_type' => $request->input('customer_type'),
+                'payment_type' => 'direct',
+                'order_id' => $orderId,
+            ], $request);
+        }
 
         if (is_plugin_active('hotel')) {
             $booking = Booking::query()
